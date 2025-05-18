@@ -1,6 +1,4 @@
 import sys
-import math
-import time
 
 def extended_gcd(a, b):
     if a == 0:
