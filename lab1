@@ -1,0 +1,20 @@
+import sys
+import math
+import time
+
+def extended_gcd(a, b):
+    if a == 0:
+        return (b, 0, 1)
+    else:
+        g, y, x = extended_gcd(b % a, a)
+        return (g, x - (b // a) * y, y)
+
+def mod_inverse(a, n):
+    g, x, y = extended_gcd(a, n)
+    if g != 1:
+        return 0
+    else:
+        return x % n
+
+a, n = map(int, sys.stdin.readline().split())
+print(mod_inverse(a, n))
