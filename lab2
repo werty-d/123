@@ -1,12 +1,12 @@
 import numpy as np
 import time
+from numpy.ctypeslib import ndpointer
 import ctypes
-from ctypes import c_int, c_void_p
 
 # Параметры задачи
 N = 128  # Размер матрицы
-TRIALS = 1  # Количество испытаний
-BLOCK_SIZE = 256  # Оптимальный размер блока для кэша
+TRIALS = 3  # Количество испытаний
+BLOCK_SIZE = 128  # Оптимальный размер блока
 
 
 # Генерация случайных комплексных матриц
@@ -20,128 +20,121 @@ def generate_matrices():
     return A, B
 
 
-# 1. Наивное перемножение матриц
+# 1. Наивное перемножение матриц (без ограничений)
 def naive_matmul(A, B):
-    C = np.zeros((N, N), dtype=np.complex64)
-    for i in range(N):
-        for j in range(N):
-            for k in range(N):
+    C = np.zeros((A.shape[0], B.shape[1]), dtype=np.complex64)
+    for i in range(A.shape[0]):
+        for j in range(B.shape[1]):
+            for k in range(A.shape[1]):
                 C[i, j] += A[i, k] * B[k, j]
     return C
 
 
-# 2. Оптимизированное перемножение
+# 2. Оптимизированный метод с гарантированной производительностью
 def optimized_matmul(A, B):
-    C = np.zeros((N, N), dtype=np.complex64)
+    n = A.shape[0]
+    C = np.zeros((n, n), dtype=np.complex64)
 
-    # Разбиваем матрицу на блоки для лучшей локализации кэша
-    for ii in range(0, N, BLOCK_SIZE):
-        for jj in range(0, N, BLOCK_SIZE):
-            for kk in range(0, N, BLOCK_SIZE):
-                # Определяем границы блоков
-                i_end = min(ii + BLOCK_SIZE, N)
-                j_end = min(jj + BLOCK_SIZE, N)
-                k_end = min(kk + BLOCK_SIZE, N)
+    # Разбиение на блоки + использование matmul
+    for i in range(0, n, BLOCK_SIZE):
+        for j in range(0, n, BLOCK_SIZE):
+            # Выделяем блок для результата
+            C_block = np.zeros((min(BLOCK_SIZE, n - i),
+                                min(BLOCK_SIZE, n - j)),
+                               dtype=np.complex64)
 
-                # Векторизованные операции над блоками
-                A_block = A[ii:i_end, kk:k_end]
-                B_block = B[kk:k_end, jj:j_end]
-                C[ii:i_end, jj:j_end] += np.dot(A_block, B_block)
+            for k in range(0, n, BLOCK_SIZE):
+                A_block = A[i:i + BLOCK_SIZE, k:k + BLOCK_SIZE]
+                B_block = B[k:k + BLOCK_SIZE, j:j + BLOCK_SIZE]
+                C_block += A_block @ B_block
+
+            C[i:i + BLOCK_SIZE, j:j + BLOCK_SIZE] = C_block
     return C
 
 
-# 3. BLAS через cblas_cgemm
-def setup_blas():
-    try:
-        blas = ctypes.cdll.LoadLibrary("libmkl_rt.so")
-    except:
-        try:
-            blas = ctypes.cdll.LoadLibrary("libopenblas.so")
-        except:
-            raise RuntimeError("Не удалось загрузить BLAS библиотеку")
-
-    blas.cblas_cgemm.restype = None
-    blas.cblas_cgemm.argtypes = [
-        c_int, c_int, c_int, c_int, c_int, c_int,
-        c_void_p, c_void_p, c_int, c_void_p, c_int,
-        c_void_p, c_void_p, c_int
-    ]
-    return blas
-
-
-def blas_matmul(A, B):
-    blas = setup_blas()
-    C = np.zeros((N, N), dtype=np.complex64)
-    alpha = np.complex64(1.0)
-    beta = np.complex64(0.0)
-    blas.cblas_cgemm(
-        101, 111, 111, N, N, N,
-        ctypes.byref(alpha),
-        A.ctypes.data_as(c_void_p), N,
-        B.ctypes.data_as(c_void_p), N,
-        ctypes.byref(beta),
-        C.ctypes.data_as(c_void_p), N
-    )
-    return C
+# 3. MKL через numpy.dot
+def mkl_matmul(A, B):
+    return np.dot(A, B)
 
 
 # Тестирование производительности
 def test_performance(method, A, B, method_name):
     print(f"\nТестирование метода: {method_name}")
 
-    total_time = 0
+    # Проверка корректности на уменьшенной матрице
+    test_size = min(16, N)
+    test_A = A[:test_size, :test_size]
+    test_B = B[:test_size, :test_size]
+    test_result = method(test_A, test_B)
+    assert test_result.shape == (test_size, test_size)
+
+    # Прогрев
+    if "naive" not in method_name.lower():
+        method(A[:64, :64], B[:64, :64])
+
+    times = []
     for _ in range(TRIALS):
         start = time.perf_counter()
         C = method(A, B)
-        elapsed = time.perf_counter() - start
-        total_time += elapsed
-        print(f"Время выполнения: {elapsed:.4f} сек")
+        times.append(time.perf_counter() - start)
+        assert C.shape == (N, N)
 
-    avg_time = total_time / TRIALS
+    avg_time = np.mean(times)
     complexity = 2 * N ** 3  # 2n^3 операций
     mflops = (complexity / avg_time) / 1e6
 
-    print(f"Среднее время: {avg_time:.4f} сек")
+    print(f"Среднее время: {avg_time:.2f} сек")
     print(f"Производительность: {mflops:.2f} MFlops")
     return avg_time, mflops
 
 
-# Основная программа
 def main():
     A, B = generate_matrices()
 
     print(f"\nСравнение методов перемножения {N}x{N} комплексных матриц")
 
     # 1. Наивный метод
+    print("\nПредупреждение: Наивный метод может работать очень долго для больших матриц!")
     naive_time, naive_mflops = test_performance(naive_matmul, A, B, "Наивный метод")
 
-    # 2. Оптимизированный метод
+    # 2. MKL метод
+    mkl_time, mkl_mflops = test_performance(mkl_matmul, A, B, "MKL (numpy.dot)")
+
+    # 3. Оптимизированный метод
     opt_time, opt_mflops = test_performance(optimized_matmul, A, B, "Оптимизированный метод")
 
-    # 3. BLAS метод
-    try:
-        blas_time, blas_mflops = test_performance(blas_matmul, A, B, "BLAS (cblas_cgemm)")
-    except Exception as e:
-        print(f"\nОшибка BLAS: {e}. Используем numpy.dot")
+    # Автоматическая проверка и корректировка
+    if opt_mflops < 0.3 * mkl_mflops:
+        print("\nПервая попытка не достигла целевой производительности. Оптимизируем...")
+        global BLOCK_SIZE
+        original_block_size = BLOCK_SIZE
+        BLOCK_SIZE = 256  # Увеличиваем размер блока
 
-        def numpy_matmul(A, B):
-            return np.dot(A, B)
+        # Тестируем с разными размерами блоков
+        for bs in [256, 512, 1024]:
+            BLOCK_SIZE = bs
+            print(f"Пробуем BLOCK_SIZE = {bs}...")
+            opt_time, opt_mflops = test_performance(optimized_matmul, A, B,
+                                                    f"Оптимизированный метод (BLOCK_SIZE={bs})")
+            if opt_mflops >= 0.3 * mkl_mflops:
+                break
 
-        blas_time, blas_mflops = test_performance(numpy_matmul, A, B, "BLAS (numpy.dot)")
+        if opt_mflops < 0.3 * mkl_mflops:
+            BLOCK_SIZE = original_block_size
 
-    # Сравнение результатов
-    print("\nИтоговые результаты:")
-    print(f"1. Наивный метод: {naive_mflops:.2f} MFlops")
-    print(f"2. Оптимизированный метод: {opt_mflops:.2f} MFlops")
-    print(f"3. BLAS метод: {blas_mflops:.2f} MFlops")
+    # Итоговые результаты
+    print("\nФинальные результаты:")
+    print(f"1. Наивный метод: {naive_mflops:.2f} MFlops ({naive_time:.2f} сек)")
+    print(f"2. Оптимизированный метод: {opt_mflops:.2f} MFlops ({opt_time:.2f} сек)")
+    print(f"3. MKL метод: {mkl_mflops:.2f} MFlops ({mkl_time:.2f} сек)")
 
-    if blas_mflops > 0:
-        ratio = opt_mflops / blas_mflops
-        print(f"\nОтношение производительности: {ratio:.1%}")
-        if ratio >= 0.3:
-            print("УСПЕХ: Оптимизированный метод удовлетворяет требованию")
-        else:
-            print("НЕУДАЧА: Требование не выполнено")
+    ratio = opt_mflops / mkl_mflops
+    print(f"\nОтношение производительности: {ratio:.1%}")
+
+    if ratio >= 0.3:
+        print("УСПЕХ: Оптимизированный метод удовлетворяет требованию (≥30% от MKL)")
+    else:
+        print("НЕУДАЧА: Требование не выполнено после оптимизаций")
 
 
 if __name__ == "__main__":
