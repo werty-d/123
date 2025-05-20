@@ -1,12 +1,12 @@
 import numpy as np
 import time
 import ctypes
-from ctypes import POINTER, c_float, c_int, c_void_p
+from ctypes import c_int, c_void_p
 
 # Параметры задачи
-N = 512  # Размер матрицы
+N = 128  # Размер матрицы
 TRIALS = 1  # Количество испытаний
-BLOCK_SIZE = 128  # Оптимальный размер блока для кэша
+BLOCK_SIZE = 256  # Оптимальный размер блока для кэша
 
 
 # Генерация случайных комплексных матриц
@@ -16,7 +16,7 @@ def generate_matrices():
     real_part = np.random.rand(N, N).astype(np.float32)
     imag_part = np.random.rand(N, N).astype(np.float32)
     A = real_part + 1j * imag_part
-    B = real_part.T - 1j * imag_part.T  # Для разнообразия
+    B = real_part.T - 1j * imag_part.T
     return A, B
 
 
@@ -30,7 +30,7 @@ def naive_matmul(A, B):
     return C
 
 
-# 2. Оптимизированное перемножение (без Numba)
+# 2. Оптимизированное перемножение
 def optimized_matmul(A, B):
     C = np.zeros((N, N), dtype=np.complex64)
 
