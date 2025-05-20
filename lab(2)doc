@@ -4,7 +4,7 @@ from numpy.ctypeslib import ndpointer
 import ctypes
 
 # Параметры задачи
-N = 128  # Размер матрицы
+N = 2048  # Размер матрицы
 TRIALS = 3  # Количество испытаний
 BLOCK_SIZE = 128  # Оптимальный размер блока
 
