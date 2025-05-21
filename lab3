@@ -1,0 +1,173 @@
+import time
+from collections import deque
+from math import gcd
+
+
+def solve_josephus(N, M, S, K, L):
+    total = N + M
+    if total == 0:
+        return []
+
+    # Создаем список всех мышей (0 - серая, 1 - белая)
+    mice = [0] * N + [1] * M
+    index = 0  # Начинаем с первой серой мыши
+
+    while len(mice) > max(K + L, 1):  # Оставляем хотя бы 1 мышь
+        index = (index + S - 1) % len(mice)
+        del mice[index]
+
+        # Проверяем, не достигли ли мы нужного количества
+        current_gray = mice.count(0)
+        current_white = mice.count(1)
+
+        # Если достигли точного решения - возвращаем
+        if current_gray == K and current_white == L:
+            return mice
+
+        # Если прошли полный круг и количество не изменилось - выходим
+        if len(mice) == total:
+            break
+
+    # Если точное решение не найдено, возвращаем ближайшее возможное
+    return mice
+
+
+def solve_with_array(N, M, S, K, L):
+    result = solve_josephus(N, M, S, K, L)
+    gray = result.count(0)
+    white = result.count(1)
+    return result, gray, white
+
+
+class Node:
+    def __init__(self, value):
+        self.value = value
+        self.next = None
+
+
+def solve_with_linked_list(N, M, S, K, L):
+    total = N + M
+    if total == 0:
+        return [], 0, 0
+
+    # Создаем циклический связанный список
+    head = Node(0)
+    current = head
+
+    for _ in range(1, N):
+        current.next = Node(0)
+        current = current.next
+
+    for _ in range(M):
+        current.next = Node(1)
+        current = current.next
+
+    current.next = head  # Замыкаем круг
+
+    prev = current
+    current = head
+    remaining = total
+
+    best_solution = None
+    best_diff = float('inf')
+
+    while remaining > max(K + L, 1):
+        # Перемещаемся на S-1 позиций
+        for _ in range(S - 1):
+            prev = current
+            current = current.next
+
+        # Удаляем текущий узел
+        prev.next = current.next
+        current = prev.next
+        remaining -= 1
+
+        # Собираем текущее состояние
+        temp_result = []
+        start = current
+        while True:
+            temp_result.append(start.value)
+            start = start.next
+            if start == current:
+                break
+
+        current_gray = sum(1 for x in temp_result if x == 0)
+        current_white = sum(1 for x in temp_result if x == 1)
+        current_diff = abs(current_gray - K) + abs(current_white - L)
+
+        # Если нашли точное решение - возвращаем
+        if current_diff == 0:
+            return temp_result, current_gray, current_white
+
+        # Запоминаем лучшее решение
+        if current_diff < best_diff:
+            best_diff = current_diff
+            best_solution = (temp_result.copy(), current_gray, current_white)
+
+    return best_solution if best_solution else (list(current.value), 1, 0)
+
+
+def solve_with_deque(N, M, S, K, L):
+    total = N + M
+    if total == 0:
+        return [], 0, 0
+
+    mice = deque([0] * N + [1] * M)
+    index = 0
+
+    best_solution = None
+    best_diff = float('inf')
+
+    while len(mice) > max(K + L, 1):
+        index = (index + S - 1) % len(mice)
+        mice.rotate(-index)
+        mice.popleft()
+        index = 1
+
+        current_gray = list(mice).count(0)
+        current_white = list(mice).count(1)
+        current_diff = abs(current_gray - K) + abs(current_white - L)
+
+        if current_diff == 0:
+            return list(mice), current_gray, current_white
+
+        if current_diff < best_diff:
+            best_diff = current_diff
+            best_solution = (list(mice), current_gray, current_white)
+
+    return best_solution if best_solution else (list(mice), len(mice), 0)
+
+
+def test_implementation(func, name, N, M, S, K, L):
+    print(f"\nТестируем {name} с N={N}, M={M}, S={S}, K={K}, L={L}")
+    start = time.time()
+    result, gray, white = func(N, M, S, K, L)
+    elapsed = time.time() - start
+
+    print(f"Результат: {gray} серых, {white} белых мышей")
+    print(f"Ожидалось: {K} серых, {L} белых")
+    print(f"Разница: {abs(gray - K) + abs(white - L)}")
+    print(f"Время выполнения: {elapsed:.6f} сек")
+
+    if gray == K and white == L:
+        print("✅ Точное решение найдено!")
+    else:
+        print("⚠ Найдено приближенное решение")
+
+
+if __name__ == "__main__":
+    # Тестовые случаи с заведомо достижимыми решениями
+    print("=== Тесты с достижимыми решениями ===")
+    test_implementation(solve_with_array, "Массив", 10, 10, 3, 4, 4)
+    test_implementation(solve_with_linked_list, "Связный список", 15, 5, 4, 5, 2)
+    test_implementation(solve_with_deque, "Deque", 20, 20, 7, 5, 5)
+
+    # Тестовые случаи с недостижимыми решениями
+    print("\n=== Тесты с недостижимыми решениями ===")
+    test_implementation(solve_with_array, "Массив", 5, 5, 2, 6, 0)  # Невозможно (K > N)
+    test_implementation(solve_with_linked_list, "Связный список", 3, 3, 5, 0, 0)  # Невозможно (K+L=0)
+    test_implementation(solve_with_deque, "Deque", 10, 10, 1, 5, 5)  # Невозможно при S=1
+
+    # Большой тест
+    print("\n=== Большой тест ===")
+    test_implementation(solve_with_deque, "Deque", 1000, 1000, 23, 100, 100)
