@@ -1,173 +1,168 @@
 import time
 from collections import deque
-from math import gcd
 
+# --- Вспомогательные функции ---
 
-def solve_josephus(N, M, S, K, L):
-    total = N + M
-    if total == 0:
-        return []
+def create_circle_array(N, M):
+    # Создаем список мышей: 'G' - серая, 'W' - белая
+    return ['G'] * N + ['W'] * M
 
-    # Создаем список всех мышей (0 - серая, 1 - белая)
-    mice = [0] * N + [1] * M
-    index = 0  # Начинаем с первой серой мыши
+def create_circle_linkedlist(N, M):
+    # Создаем связный список из мышей
+    class Node:
+        def __init__(self, val):
+            self.val = val
+            self.next = None
 
-    while len(mice) > max(K + L, 1):  # Оставляем хотя бы 1 мышь
-        index = (index + S - 1) % len(mice)
-        del mice[index]
+    head = None
+    prev = None
+    for val in ['G'] * N + ['W'] * M:
+        node = Node(val)
+        if head is None:
+            head = node
+        else:
+            prev.next = node
+        prev = node
+    prev.next = head  # замыкаем круг
+    return head
 
-        # Проверяем, не достигли ли мы нужного количества
-        current_gray = mice.count(0)
-        current_white = mice.count(1)
+# --- А) Через массив (список) ---
+def cat_eats_array(N, M, S, K, L):
+    circle = create_circle_array(N, M)
+    # Найдем индекс первой серой мыши
+    start = circle.index('G')
+    idx = start
+    count_g = N
+    count_w = M
 
-        # Если достигли точного решения - возвращаем
-        if current_gray == K and current_white == L:
-            return mice
+    while count_g > K or count_w > L:
+        # Считаем S-1 мышь, т.к. текущая считается за 1
+        steps = 0
+        while steps < S - 1:
+            idx = (idx + 1) % len(circle)
+            steps += 1
+        # idx указывает на S-ю мышь - съедаем её
+        eaten = circle.pop(idx)
+        if eaten == 'G':
+            count_g -= 1
+        else:
+            count_w -= 1
+        # idx теперь указывает на следующую мышь после съеденной, так как pop сдвигает список
+        if idx == len(circle):
+            idx = 0
+        # Если список пуст - выходим
+        if len(circle) == 0:
+            break
+    return circle
 
-        # Если прошли полный круг и количество не изменилось - выходим
-        if len(mice) == total:
+# --- Б) Через связанный список ---
+def cat_eats_linkedlist(N, M, S, K, L):
+    class Node:
+        def __init__(self, val):
+            self.val = val
+            self.next = None
+
+    # Создаем круг
+    head = None
+    prev = None
+    for val in ['G'] * N + ['W'] * M:
+        node = Node(val)
+        if head is None:
+            head = node
+        else:
+            prev.next = node
+        prev = node
+    prev.next = head  # замыкаем круг
+
+    # Найдем первую серую мышь
+    current = head
+    while current.val != 'G':
+        current = current.next
+
+    count_g = N
+    count_w = M
+
+    while count_g > K or count_w > L:
+        # Считаем S-1 мышь
+        for _ in range(S - 2):
+            current = current.next
+        # Удаляем S-ю мышь (следующую за current)
+        to_remove = current.next
+        if to_remove.val == 'G':
+            count_g -= 1
+        else:
+            count_w -= 1
+        # Удаляем узел
+        current.next = to_remove.next
+        current = current.next  # следующий после удаленного
+        # Если удалили всех - выходим
+        if count_g == K and count_w == L:
             break
 
-    # Если точное решение не найдено, возвращаем ближайшее возможное
-    return mice
+    # Собираем результат в список для вывода
+    result = []
+    start = current
+    result.append(start.val)
+    node = start.next
+    while node != start:
+        result.append(node.val)
+        node = node.next
+    return result
 
+# --- В) С использованием стандартной библиотеки (deque) ---
+def cat_eats_deque(N, M, S, K, L):
+    circle = deque(['G'] * N + ['W'] * M)
+    # Найдем индекс первой серой мыши
+    idx = 0
+    for i, val in enumerate(circle):
+        if val == 'G':
+            idx = i
+            break
+    # Повернем deque так, чтобы первая серая мышь была в начале
+    circle.rotate(-idx)
 
-def solve_with_array(N, M, S, K, L):
-    result = solve_josephus(N, M, S, K, L)
-    gray = result.count(0)
-    white = result.count(1)
-    return result, gray, white
+    count_g = N
+    count_w = M
 
+    while count_g > K or count_w > L:
+        # Считаем S-1 мышь: сдвигаем влево S-1 раз
+        circle.rotate(-(S - 1))
+        # Удаляем S-ю мышь (теперь в начале)
+        eaten = circle.popleft()
+        if eaten == 'G':
+            count_g -= 1
+        else:
+            count_w -= 1
+    return list(circle)
 
-class Node:
-    def __init__(self, value):
-        self.value = value
-        self.next = None
+# --- Тест и сравнение ---
 
+def test_and_benchmark():
+    N = 10
+    M = 10
+    S = 3
+    K = 5
+    L = 5
 
-def solve_with_linked_list(N, M, S, K, L):
-    total = N + M
-    if total == 0:
-        return [], 0, 0
+    print("Исходные данные:")
+    print(f"Серых: {N}, Белых: {M}, Съедаем каждую S-ю: {S}")
+    print(f"Осталось серых: {K}, белых: {L}\n")
 
-    # Создаем циклический связанный список
-    head = Node(0)
-    current = head
-
-    for _ in range(1, N):
-        current.next = Node(0)
-        current = current.next
-
-    for _ in range(M):
-        current.next = Node(1)
-        current = current.next
-
-    current.next = head  # Замыкаем круг
-
-    prev = current
-    current = head
-    remaining = total
-
-    best_solution = None
-    best_diff = float('inf')
-
-    while remaining > max(K + L, 1):
-        # Перемещаемся на S-1 позиций
-        for _ in range(S - 1):
-            prev = current
-            current = current.next
-
-        # Удаляем текущий узел
-        prev.next = current.next
-        current = prev.next
-        remaining -= 1
-
-        # Собираем текущее состояние
-        temp_result = []
-        start = current
-        while True:
-            temp_result.append(start.value)
-            start = start.next
-            if start == current:
-                break
-
-        current_gray = sum(1 for x in temp_result if x == 0)
-        current_white = sum(1 for x in temp_result if x == 1)
-        current_diff = abs(current_gray - K) + abs(current_white - L)
-
-        # Если нашли точное решение - возвращаем
-        if current_diff == 0:
-            return temp_result, current_gray, current_white
-
-        # Запоминаем лучшее решение
-        if current_diff < best_diff:
-            best_diff = current_diff
-            best_solution = (temp_result.copy(), current_gray, current_white)
-
-    return best_solution if best_solution else (list(current.value), 1, 0)
-
-
-def solve_with_deque(N, M, S, K, L):
-    total = N + M
-    if total == 0:
-        return [], 0, 0
-
-    mice = deque([0] * N + [1] * M)
-    index = 0
-
-    best_solution = None
-    best_diff = float('inf')
-
-    while len(mice) > max(K + L, 1):
-        index = (index + S - 1) % len(mice)
-        mice.rotate(-index)
-        mice.popleft()
-        index = 1
-
-        current_gray = list(mice).count(0)
-        current_white = list(mice).count(1)
-        current_diff = abs(current_gray - K) + abs(current_white - L)
-
-        if current_diff == 0:
-            return list(mice), current_gray, current_white
-
-        if current_diff < best_diff:
-            best_diff = current_diff
-            best_solution = (list(mice), current_gray, current_white)
-
-    return best_solution if best_solution else (list(mice), len(mice), 0)
-
-
-def test_implementation(func, name, N, M, S, K, L):
-    print(f"\nТестируем {name} с N={N}, M={M}, S={S}, K={K}, L={L}")
     start = time.time()
-    result, gray, white = func(N, M, S, K, L)
-    elapsed = time.time() - start
+    res_a = cat_eats_array(N, M, S, K, L)
+    t_a = time.time() - start
+    print(f"А) Массив: {res_a}, время: {t_a:.6f} сек")
 
-    print(f"Результат: {gray} серых, {white} белых мышей")
-    print(f"Ожидалось: {K} серых, {L} белых")
-    print(f"Разница: {abs(gray - K) + abs(white - L)}")
-    print(f"Время выполнения: {elapsed:.6f} сек")
+    start = time.time()
+    res_b = cat_eats_linkedlist(N, M, S, K, L)
+    t_b = time.time() - start
+    print(f"Б) Связанный список: {res_b}, время: {t_b:.6f} сек")
 
-    if gray == K and white == L:
-        print("✅ Точное решение найдено!")
-    else:
-        print("⚠ Найдено приближенное решение")
-
+    start = time.time()
+    res_c = cat_eats_deque(N, M, S, K, L)
+    t_c = time.time() - start
+    print(f"В) deque: {res_c}, время: {t_c:.6f} сек")
 
 if __name__ == "__main__":
-    # Тестовые случаи с заведомо достижимыми решениями
-    print("=== Тесты с достижимыми решениями ===")
-    test_implementation(solve_with_array, "Массив", 10, 10, 3, 4, 4)
-    test_implementation(solve_with_linked_list, "Связный список", 15, 5, 4, 5, 2)
-    test_implementation(solve_with_deque, "Deque", 20, 20, 7, 5, 5)
-
-    # Тестовые случаи с недостижимыми решениями
-    print("\n=== Тесты с недостижимыми решениями ===")
-    test_implementation(solve_with_array, "Массив", 5, 5, 2, 6, 0)  # Невозможно (K > N)
-    test_implementation(solve_with_linked_list, "Связный список", 3, 3, 5, 0, 0)  # Невозможно (K+L=0)
-    test_implementation(solve_with_deque, "Deque", 10, 10, 1, 5, 5)  # Невозможно при S=1
-
-    # Большой тест
-    print("\n=== Большой тест ===")
-    test_implementation(solve_with_deque, "Deque", 1000, 1000, 23, 100, 100)
+    test_and_benchmark()
+    
