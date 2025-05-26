@@ -1,0 +1,45 @@
+class Node:
+    def __init__(self, data=None):
+        self.data = data
+        self.prev = None
+        self.next = None
+
+class DoublyLinkedList:
+    def __init__(self):
+        self.sentinel = Node()
+        self.sentinel.prev = self.sentinel
+        self.sentinel.next = self.sentinel
+
+    def insert_after(self, node, data):
+        new_node = Node(data)
+        new_node.prev = node
+        new_node.next = node.next
+        node.next.prev = new_node
+        node.next = new_node
+
+    def insert_front(self, data):
+        self.insert_after(self.sentinel, data)
+
+    def insert_back(self, data):
+        self.insert_after(self.sentinel.prev, data)
+
+    def remove(self, node):
+        if node == self.sentinel:
+            return
+        node.prev.next = node.next
+        node.next.prev = node.prev
+        del node
+
+    def find(self, value):
+        current = self.sentinel.next
+        while current != self.sentinel:
+            if current.data == value:
+                return current
+            current = current.next
+        return None
+
+    def __iter__(self):
+        current = self.sentinel.next
+        while current != self.sentinel:
+            yield current.data
+            current = current.next
