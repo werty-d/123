@@ -41,5 +41,6 @@ class DoublyLinkedList:
     def __iter__(self):
         current = self.sentinel.next
         while current != self.sentinel:
+
             yield current.data
             current = current.next
